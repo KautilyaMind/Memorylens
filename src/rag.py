@@ -25,7 +25,7 @@ def _context_block(result: dict[str, Any], marker: int) -> str:
     if result.get("page"):
         location.append(f"Page: {result['page']}")
     location_text = "\n".join(location)
-    return f"""[Source {marker}]
+    return f"""[{marker}]
 Title: {result.get('title', 'Untitled')}
 Document ID: {result.get('document_id', '')}
 {location_text}

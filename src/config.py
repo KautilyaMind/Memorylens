@@ -34,7 +34,7 @@ def _csv_env(name: str, default: str) -> tuple[str, ...]:
 @dataclass(frozen=True)
 class Settings:
     project_root: Path = PROJECT_ROOT
-    sources_file: Path = PROJECT_ROOT / "config" / "sources.yaml"
+    documents_file: Path = PROJECT_ROOT / "config" / "documents.yaml"
     corpus_dir: Path = PROJECT_ROOT / "corpus"
     vectorstore_dir: Path = PROJECT_ROOT / "data" / "vectorstore"
     gemini_api_key: str = os.getenv("GEMINI_API_KEY", "")

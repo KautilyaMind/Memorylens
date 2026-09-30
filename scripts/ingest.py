@@ -26,7 +26,10 @@ def ingest(report: ValidationReport | None = None) -> int:
         LOGGER.error("Corpus validation failed; index was not rebuilt")
         return 1
     if report.missing:
-        LOGGER.warning("Building an incomplete index after explicitly reporting %d missing sources", len(report.missing))
+        LOGGER.warning(
+            "Building an incomplete index after explicitly reporting %d missing documents",
+            len(report.missing),
+        )
 
     documents = load_corpus(settings.corpus_dir)
     LOGGER.info("Creating chunks...")
@@ -35,10 +38,13 @@ def ingest(report: ValidationReport | None = None) -> int:
         LOGGER.error("No chunks were generated")
         return 1
     LOGGER.info("Generated %d chunks", len(chunks))
+    print(f"Chunks generated: {len(chunks)}")
     LOGGER.info("Generating local embeddings with %s...", settings.embedding_model)
     embeddings = LocalEmbeddings(settings.embedding_model).embed_documents([chunk.text for chunk in chunks])
     VectorStore.build(embeddings, chunks, settings.vectorstore_dir)
-    write_index_manifest(settings.vectorstore_dir, settings.embedding_model, len(chunks), report.available)
+    write_index_manifest(
+        settings.vectorstore_dir, settings.embedding_model, len(chunks), report.valid_pdfs
+    )
     LOGGER.info("Saved FAISS index to %s", settings.vectorstore_dir)
     return 0
 

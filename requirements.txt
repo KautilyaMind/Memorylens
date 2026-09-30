@@ -1,7 +1,5 @@
-beautifulsoup4>=4.12,<5
 faiss-cpu>=1.8,<2
 google-genai>=1.0,<2
-markdownify>=0.13,<2
 numpy>=1.26,<3
 pymupdf>=1.24,<2
 python-dotenv>=1.0,<2

@@ -10,21 +10,21 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from scripts.ingest import ingest
-from src.corpus_builder import CorpusBuilder, print_build_report
+from src.corpus_downloader import CorpusDownloader, print_download_report
 from src.validation import print_validation_report, validate_corpus
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Build, validate, and index the MemoryLens corpus")
+    parser = argparse.ArgumentParser(description="Download, validate, and index the MemoryLens corpus")
     parser.add_argument("--force", action="store_true", help="Re-download existing documents")
     parser.add_argument("--delay", type=float, default=0.5, help="Seconds between requests")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
-    print("\n=== Build corpus ===")
-    build_report = CorpusBuilder(delay=max(0.0, args.delay)).build(force=args.force)
-    print_build_report(build_report)
-    if build_report.processed == 0:
+    print("\n=== Download corpus ===")
+    download_report = CorpusDownloader(delay=max(0.0, args.delay)).download(force=args.force)
+    print_download_report(download_report)
+    if download_report.available == 0:
         return 1
 
     print("\n=== Validate corpus ===")

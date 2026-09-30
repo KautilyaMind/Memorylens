@@ -57,6 +57,7 @@ def render_context(results: list[dict]) -> None:
             st.markdown(f"**{result['rank']}. {result['title']}**")
             st.caption(
                 f"{result.get('category', '')} · {result.get('product_family', '')} · "
+                f"{result.get('technology', '')} · "
                 f"{location} · similarity {result['score']:.3f}"
             )
             st.text(result["text"])
@@ -65,6 +66,17 @@ def render_context(results: list[dict]) -> None:
 
 st.title("MemoryLens")
 st.caption("Technical RAG over public memory and storage documentation")
+
+try:
+    index_stats = read_index_manifest(settings.vectorstore_dir)
+    with st.sidebar:
+        st.subheader("Indexed corpus")
+        left, right = st.columns(2)
+        left.metric("Documents", index_stats.get("document_count", 0))
+        right.metric("Chunks", index_stats.get("chunk_count", 0))
+        st.caption("Dense local retrieval · page-aware citations")
+except Exception:
+    pass
 
 try:
     retriever = load_retriever()

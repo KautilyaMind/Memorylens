@@ -4,9 +4,10 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .streamlit/
+# Legacy generated webpage artifacts remain ignored but are never loaded.
 corpus/**/*.md
-corpus/**/*.pdf
 corpus/**/*.metadata.yaml
+corpus/**/*.pdf
 data/parsed/
 data/vectorstore/
 !.gitkeep

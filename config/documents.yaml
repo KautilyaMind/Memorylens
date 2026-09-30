@@ -1,0 +1,159 @@
+- document_id: MICRON-DRAM-001
+  title: Micron HBM3E Product Brief
+  file_name: micron-hbm3e-product-brief.pdf
+  category: DRAM
+  product_family: HBM3E
+  technology: High Bandwidth Memory
+  document_type: Product brief
+  source: Micron Technology
+  source_url: https://assets.micron.com/adobe/assets/urn%3Aaaid%3Aaem%3Ab710d8f2-7f66-44c1-a234-456e2b986347/renditions/original/as/hbm3e-product-brief.pdf
+
+- document_id: MICRON-DRAM-002
+  title: Micron GDDR7 Product Brief
+  file_name: micron-gddr7-product-brief.pdf
+  category: DRAM
+  product_family: GDDR7
+  technology: Graphics DRAM
+  document_type: Product brief
+  source: Micron Technology
+  source_url: https://www.micron.com/content/dam/micron/global/public/products/product-flyer/gddr7-product-brief.pdf
+
+- document_id: MICRON-DRAM-003
+  title: Mobile Memory Is the Foundation for Edge AI
+  file_name: mobile-memory-foundation-edge-ai.pdf
+  category: DRAM
+  product_family: LPDDR5X
+  technology: Low-Power DRAM
+  document_type: White paper
+  source: Micron Technology
+  source_url: https://www.micron.com/content/dam/micron/global/public/products/memory/mobile-dram/lpddr5/documents/mobile-memory-foundation-edge-ai-white-paper.pdf
+
+- document_id: MICRON-DRAM-004
+  title: Micron LPDDR5X CAMM2 Technical Brief
+  file_name: lpddr5x-camm2-technical-brief.pdf
+  category: DRAM
+  product_family: LPDDR5X CAMM2
+  technology: Low-Power DRAM
+  document_type: Technical brief
+  source: Micron Technology
+  source_url: https://www.micron.com/content/dam/micron/global/public/documents/products/product-flyer/lpddr5x-camm2-technical-brief.pdf
+
+- document_id: MICRON-DRAM-005
+  title: DDR5 - More Than a Generational Update
+  file_name: ddr5-generational-update.pdf
+  category: DRAM
+  product_family: DDR5
+  technology: DDR SDRAM
+  document_type: White paper
+  source: Micron Technology
+  source_url: https://www.micron.com/content/dam/micron/global/public/products/white-paper/ddr5-more-than-a-generational-update-wp.pdf
+
+- document_id: MICRON-DRAM-006
+  title: DDR5 New Features
+  file_name: ddr5-new-features.pdf
+  category: DRAM
+  product_family: DDR5
+  technology: DDR SDRAM
+  document_type: White paper
+  source: Micron Technology
+  source_url: https://www.micron.com/content/dam/micron/global/public/products/white-paper/ddr5-new-features-white-paper.pdf
+
+- document_id: MICRON-DRAM-007
+  title: DDR5 Key Module Features for Client Applications
+  file_name: ddr5-client-module-features.pdf
+  category: DRAM
+  product_family: DDR5
+  technology: DDR SDRAM
+  document_type: White paper
+  source: Micron Technology
+  source_url: https://www.micron.com/content/dam/micron/global/public/products/white-paper/ddr5-key-module-features-wp-client.pdf
+
+- document_id: MICRON-NAND-001
+  title: Micron 9650 NVMe SSD Product Brief
+  file_name: micron-9650-nvme-ssd.pdf
+  category: NAND
+  product_family: 9650 NVMe SSD
+  technology: PCIe Gen6 NVMe SSD
+  document_type: Product brief
+  source: Micron Technology
+  source_url: https://www.micron.com/content/dam/micron/global/public/products/storage/ssds/data-center/9650/9650-nvme-ssd-product-brief.pdf
+
+- document_id: MICRON-NAND-002
+  title: Micron 2600 NVMe SSD Product Brief
+  file_name: micron-2600-nvme-ssd.pdf
+  category: NAND
+  product_family: 2600 NVMe SSD
+  technology: PCIe Gen4 NVMe SSD
+  document_type: Product brief
+  source: Micron Technology
+  source_url: https://assets.micron.com/adobe/assets/urn%3Aaaid%3Aaem%3A2164cd75-2cae-47bc-8263-b215ac04bfb6/renditions/original/as/2600-nvme-ssd-product-brief.pdf
+
+- document_id: MICRON-NAND-003
+  title: Micron 2650 NVMe SSD Product Brief
+  file_name: micron-2650-nvme-ssd.pdf
+  category: NAND
+  product_family: 2650 NVMe SSD
+  technology: PCIe Gen4 NVMe SSD
+  document_type: Product brief
+  source: Micron Technology
+  source_url: https://assets.micron.com/adobe/assets/urn%3Aaaid%3Aaem%3A7da012da-94a9-442e-b914-cbf9b06f3502/renditions/original/as/2650-nvme-ssd-product-brief.pdf
+
+- document_id: MICRON-NAND-004
+  title: Micron 6550 ION NVMe SSD Product Brief
+  file_name: micron-6550-ion-nvme-ssd.pdf
+  category: NAND
+  product_family: 6550 ION NVMe SSD
+  technology: PCIe Gen5 NVMe SSD
+  document_type: Product brief
+  source: Micron Technology
+  source_url: https://assets.micron.com/adobe/assets/urn%3Aaaid%3Aaem%3A9d38136b-0ec8-48e7-a248-4d584b29d519/original/as/6550-ion-nvme-ssd-product-brief.pdf
+
+- document_id: MICRON-NOR-001
+  title: Micron NOR and NAND Flash Guide
+  file_name: micron-nor-nand-flash-guide.pdf
+  category: NOR
+  product_family: NOR Flash
+  technology: NOR and NAND Flash
+  document_type: Technical guide
+  source: Micron Technology
+  source_url: https://assets.micron.com/adobe/assets/urn%3Aaaid%3Aaem%3Ae98bc653-e42d-45a7-9b8c-03cb3d488f05/original/as/nor-nand-flash-guide.pdf
+
+- document_id: MICRON-NOR-002
+  title: Micron NOR Flash Product Flyer
+  file_name: micron-nor-flash-product-flyer.pdf
+  category: NOR
+  product_family: NOR Flash
+  technology: Serial and Parallel NOR Flash
+  document_type: Product flyer
+  source: Micron Technology
+  source_url: https://www.micron.com/content/dam/micron/global/public/products/product-flyer/nor-flyer.pdf
+
+- document_id: MICRON-TECH-001
+  title: AI Acceleration Drives Memory Solutions
+  file_name: ai-acceleration-drives-memory-solutions.pdf
+  category: TECHNICAL
+  product_family: AI Infrastructure
+  technology: Memory and Storage
+  document_type: Technical brief
+  source: Micron Technology
+  source_url: https://assets.micron.com/adobe/assets/urn%3Aaaid%3Aaem%3Adc94ec97-50ab-4d53-b5c6-bd057de5c606/original/as/ai-acceleration-drives-memory-solutions.pdf
+
+- document_id: MICRON-TECH-002
+  title: The Importance of Memory in High-Performance Computing and AI
+  file_name: memory-in-hpc-and-ai.pdf
+  category: TECHNICAL
+  product_family: AI and HPC
+  technology: Memory Systems
+  document_type: White paper
+  source: Micron Technology
+  source_url: https://assets.micron.com/adobe/assets/urn%3Aaaid%3Aaem%3A8a68fc66-7658-4d0a-98ef-3d70f93181a2/renditions/original/as/import-of-mem-in-hi-perf-compute-and-ai-white-paper.pdf
+
+- document_id: MICRON-TECH-003
+  title: The Emerging Memory-Centric Data Center
+  file_name: emerging-memory-centric-data-center.pdf
+  category: TECHNICAL
+  product_family: Data Center
+  technology: Memory and Storage Architecture
+  document_type: White paper
+  source: Micron Technology
+  source_url: https://assets.micron.com/adobe/assets/urn%3Aaaid%3Aaem%3A54999d19-b42a-42a0-ac68-2febb625731d/renditions/original/as/the-emerging-memory-centric-data-center.pdf
