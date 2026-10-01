@@ -10,8 +10,10 @@ from src.config import settings
 from src.embeddings import LocalEmbeddings
 from src.gemini_client import GeminiClient
 from src.rag import RAGPipeline
+from src.query_analysis import analyze_query
 from src.retriever import DenseRetriever, HybridRetriever
 from src.retriever_filters import FILTER_FIELDS
+from src.reranker import CrossEncoderReranker
 from src.vectorstore import VectorStore, read_index_manifest
 
 EXAMPLES = [
@@ -22,7 +24,7 @@ EXAMPLES = [
     "How do HBM3E characteristics support high-performance AI workloads?",
 ]
 
-st.set_page_config(page_title="MemoryLens v0.2", page_icon="🔎", layout="wide")
+st.set_page_config(page_title="MemoryLens v0.3", page_icon="🔎", layout="wide")
 
 
 @st.cache_resource(show_spinner="Loading dense and BM25 retrieval indexes...")
@@ -46,6 +48,10 @@ def load_retrieval() -> tuple[HybridRetriever, list[Any], dict[str, Any]]:
         BM25Retriever(bm25_store, settings.bm25_candidates),
         settings.top_k,
         settings.rrf_k,
+        CrossEncoderReranker(settings.reranker_model, settings.rerank_batch_size),
+        settings.rerank_candidates,
+        settings.rerank_top_k,
+        settings.enable_query_analysis,
     )
     return retriever, canonical, manifest
 
@@ -87,11 +93,20 @@ def render_result(result: dict[str, Any], heading: bool = True) -> None:
         f"{result.get('technology', '')} · {result.get('document_type', '')} · {location}"
     )
     st.caption(
+        f"Content type: {result.get('content_type', 'text')}"
+        + (f" · Table: {result.get('table_title')}" if result.get("table_title") else "")
+    )
+    st.caption(
         " · ".join(
             [
                 score_text("Dense", result.get("dense_score"), result.get("dense_rank")),
                 score_text("BM25", result.get("bm25_score"), result.get("bm25_rank")),
-                f"RRF: {result['rrf_score']:.6f}" if result.get("rrf_score") is not None else "RRF: —",
+                score_text("RRF", result.get("rrf_score"), result.get("rrf_rank")),
+                score_text(
+                    "Reranker",
+                    result.get("reranker_score"),
+                    result.get("reranker_rank"),
+                ),
             ]
         )
     )
@@ -107,10 +122,17 @@ def render_context(results: list[dict[str, Any]]) -> None:
 
 def render_comparison(comparison: dict[str, list[dict[str, Any]]]) -> None:
     st.subheader("Compare Retrieval Methods")
-    columns = st.columns(3)
-    for column, mode in zip(columns, ("dense", "bm25", "hybrid")):
+    columns = st.columns(4)
+    modes = ("dense", "bm25", "hybrid", "hybrid_rerank")
+    names = {
+        "dense": "Dense",
+        "bm25": "BM25",
+        "hybrid": "Hybrid",
+        "hybrid_rerank": "Hybrid + Reranker",
+    }
+    for column, mode in zip(columns, modes):
         with column:
-            st.markdown(f"**{mode.title()} Top {settings.top_k}**")
+            st.markdown(f"**{names[mode]} Top {settings.top_k}**")
             if not comparison[mode]:
                 st.caption("No matching chunks")
             for result in comparison[mode]:
@@ -121,12 +143,32 @@ def render_comparison(comparison: dict[str, list[dict[str, Any]]]) -> None:
                 st.caption(
                     f"D:{result.get('dense_rank') or '—'} · "
                     f"B:{result.get('bm25_rank') or '—'} · "
-                    f"RRF:{result.get('rrf_score') or '—'}"
+                    f"RRF:{result.get('rrf_rank') or '—'} · "
+                    f"CE:{result.get('reranker_rank') or '—'}"
                 )
 
 
-st.title("MemoryLens v0.2")
-st.caption("Hybrid retrieval over public Micron memory and storage documentation")
+def render_debug(response: dict[str, Any]) -> None:
+    with st.expander("Query analysis and latency", expanded=False):
+        analysis = response.get("query_analysis", {})
+        st.json(analysis)
+        timings = response.get("timings", {})
+        labels = {
+            "query_analysis_ms": "Query analysis",
+            "dense_retrieval_ms": "Dense retrieval",
+            "bm25_retrieval_ms": "BM25 retrieval",
+            "rrf_ms": "RRF",
+            "reranking_ms": "Cross-encoder reranking",
+            "total_retrieval_ms": "Total retrieval",
+            "gemini_generation_ms": "Gemini generation",
+            "end_to_end_ms": "End to end",
+        }
+        for key, label in labels.items():
+            st.caption(f"{label}: {float(timings.get(key, 0.0)):.1f} ms")
+
+
+st.title("MemoryLens v0.3")
+st.caption("Hybrid retrieval and local cross-encoder reranking over Micron technical documentation")
 
 try:
     retriever, canonical_chunks, index_stats = load_retrieval()
@@ -137,13 +179,22 @@ except Exception as exc:
 
 with st.sidebar:
     st.subheader("Retrieval")
-    modes = ["Hybrid", "Dense", "BM25"]
-    configured_mode = settings.retrieval_mode.title()
-    mode = st.selectbox(
+    mode_options = {
+        "Hybrid + Reranker": "hybrid_rerank",
+        "Hybrid": "hybrid",
+        "Dense": "dense",
+        "BM25": "bm25",
+    }
+    configured_label = next(
+        (label for label, value in mode_options.items() if value == settings.retrieval_mode),
+        "Hybrid + Reranker",
+    )
+    mode_label = st.selectbox(
         "Retrieval Mode",
-        modes,
-        index=modes.index(configured_mode) if configured_mode in modes else 0,
-    ).lower()
+        list(mode_options),
+        index=list(mode_options).index(configured_label),
+    )
+    mode = mode_options[mode_label]
     filters: dict[str, str] = {}
     for field in FILTER_FIELDS:
         label = field.replace("_", " ").title()
@@ -152,10 +203,14 @@ with st.sidebar:
             filters[field] = selection
     compare = st.checkbox("Compare Retrieval Methods", value=False)
     st.divider()
-    left, right = st.columns(2)
+    left, middle, right = st.columns(3)
     left.metric("Documents", index_stats.get("document_count", 0))
-    right.metric("Chunks", index_stats.get("chunk_count", 0))
-    st.caption("Canonical chunks · FAISS + BM25 · RRF fusion")
+    middle.metric("Chunks", index_stats.get("chunk_count", 0))
+    right.metric(
+        "Table chunks",
+        sum(chunk.metadata.get("content_type") == "table" for chunk in canonical_chunks),
+    )
+    st.caption("Canonical text/table chunks · FAISS + BM25 · RRF · local reranker")
 
 example = st.selectbox("Example questions", ["Choose an example..."] + EXAMPLES)
 default_question = "" if example.startswith("Choose") else example
@@ -165,12 +220,16 @@ question = st.text_area(
     placeholder="Ask about Micron memory and storage technology...",
 )
 
+if settings.enable_query_analysis and question.strip():
+    with st.expander("Query analysis preview", expanded=False):
+        st.json(analyze_query(question))
+
 if compare and st.button("Run Retrieval Comparison"):
     if not question.strip():
         st.warning("Enter a question before comparing retrieval methods.")
     else:
         try:
-            with st.spinner("Comparing dense, BM25, and hybrid retrieval..."):
+            with st.spinner("Comparing all four retrieval modes..."):
                 render_comparison(retriever.compare(question, filters))
         except Exception as exc:
             st.error(str(exc))
@@ -190,6 +249,7 @@ if st.button("Ask", type="primary"):
                         settings.gemini_max_retries,
                         settings.gemini_retry_base_seconds,
                     ),
+                    settings.context_max_chars,
                 )
                 response = pipeline.answer(question, filters=filters, mode=mode)
             st.subheader("Answer")
@@ -198,7 +258,13 @@ if st.button("Ask", type="primary"):
             st.markdown(response["answer"])
             if response["model"]:
                 st.caption(f"Generated with `{response['model']}` · retrieval mode `{mode}`")
+            if response.get("invalid_citations"):
+                st.warning(
+                    "Removed invalid citation markers: "
+                    + ", ".join(map(str, response["invalid_citations"]))
+                )
             render_sources(response["sources"])
             render_context(response["results"])
+            render_debug(response)
         except Exception as exc:
             st.error(str(exc))

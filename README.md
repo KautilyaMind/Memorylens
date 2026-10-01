@@ -1,104 +1,163 @@
-# MemoryLens v0.2
+# MemoryLens v0.3
 
 MemoryLens is a Retrieval-Augmented Generation system over a curated corpus of
-public Micron technical documents across DRAM, NAND, NOR, and memory-related
-AI/HPC technologies. Version 0.2 preserves the dense FAISS baseline and adds
-local BM25 retrieval, Reciprocal Rank Fusion, metadata filtering, and retrieval
-comparison tools.
+public Micron technical PDFs covering DRAM, NAND, NOR, and memory-related AI/HPC
+technologies. Version 0.3 preserves every v0.2 retrieval mode and adds local
+cross-encoder reranking, deterministic query analysis, technical-table chunks,
+improved context assembly, citation-marker validation, and retrieval latency
+instrumentation.
 
-The corpus still prioritizes authoritative product briefs, white papers,
-technical guides, and reports over arbitrary document count. Gemini receives
-only the final retrieved evidence and produces page-aware citations.
+Gemini receives only the selected evidence and retains the explicitly configured
+free-model fallback chain. MemoryLens does not use an LLM for query analysis,
+reranking, ingestion, or routing.
 
 ## Architecture
 
 ```text
-                 Curated Technical Corpus
-                           ↓
-                    Canonical Chunks
-                           ↓
-              ┌────────────┴────────────┐
-              ↓                         ↓
-        Dense Embeddings             Tokens
-              ↓                         ↓
-            FAISS                     BM25
-              ↓                         ↓
-      Semantic Retrieval       Lexical Retrieval
-              └────────────┬────────────┘
-                           ↓
-                 Reciprocal Rank Fusion
-                           ↓
-                    Metadata Constraints
-                           ↓
-                      Final Top-K
-                           ↓
-                         Gemini
-                           ↓
-                  Answer + Citations
+                   User Query
+                       ↓
+              Lightweight Query Analysis
+                       ↓
+                Metadata Filters
+                       ↓
+              ┌────────┴────────┐
+              ↓                 ↓
+         Dense Search       BM25 Search
+            FAISS               ↓
+              └────────┬────────┘
+                       ↓
+             Reciprocal Rank Fusion
+                       ↓
+              Top 20 Candidates
+                       ↓
+             Local Cross-Encoder
+                       ↓
+                Best 5 Chunks
+                       ↓
+              Context Assembly
+                       ↓
+                    Gemini
+                       ↓
+       Grounded Answer + Validated Citations
 ```
 
-In the implementation, selected metadata constraints are applied before each
-retriever truncates its candidate list. Dense search scores the complete FAISS
-index and then keeps the highest-ranked eligible chunks; BM25 similarly ranks
-the complete eligible subset. This prevents restrictive filters from being
-limited to an unrelated initial candidate pool.
-
-## Retrieval concepts
-
-### Dense retrieval
-
-FAISS searches normalized local Sentence Transformer embeddings. Dense search
-is useful when a question and a document express similar meaning with different
-words. Dense-only mode remains available as the v0.1 comparison baseline.
-
-### BM25
-
-BM25 is useful for exact words, technical codes, acronyms, product names, and
-numerical specifications such as `HBM3E`, `MT25Q`, `GDDR7`, `8800`, and `MT/s`.
-Tokenization lowercases for comparison but preserves letters, numbers, embedded
-digits, slashes, dots, plus signs, and internal hyphens. It deliberately avoids
-stemming and aggressive stop-word removal. BM25 tokenizes each chunk's title,
-section heading, and body text so identifiers present in a heading remain
-searchable without creating a second chunk dataset. A deliberately small list
-removes generic query words such as “find,” “information,” and “related”; all
-technical identifiers and units remain untouched.
-
-### Hybrid retrieval and RRF
-
-Hybrid mode independently retrieves larger dense and BM25 candidate pools and
-combines their ranks using Reciprocal Rank Fusion:
+Ingestion uses one canonical chunk dataset for both indexes:
 
 ```text
-RRF(d) = Σ 1 / (RRF_K + rank(d))
+Curated Micron PDFs
+         ↓
+    PDF Extraction
+     ┌───┴───┐
+     ↓       ↓
+   Text    Tables
+     └───┬───┘
+         ↓
+ Canonical JSONL Chunks
+     ┌───┴───┐
+     ↓       ↓
+   FAISS    BM25
 ```
 
-RRF uses positions rather than directly adding incompatible FAISS and BM25 raw
-scores. Chunks found by both systems generally gain a stronger fused score.
+Chunk counts, canonical IDs, ordering, and SHA-256 identity digests are checked
+across canonical JSONL, FAISS, and BM25 data.
 
-### Metadata filtering
+## Retrieval modes
 
-The UI can constrain retrieval by category, product family, technology, or
-document type. Choices come from the indexed chunk metadata. Filters are
-explicit and user-selected; v0.2 does not use an LLM to infer them.
+The Streamlit sidebar supports four comparable modes:
 
-## Shared chunk and index storage
+| Mode | Pipeline |
+|---|---|
+| Dense | Local bi-encoder → FAISS |
+| BM25 | Technical tokens → BM25 |
+| Hybrid | Dense + BM25 → RRF |
+| Hybrid + Reranker | Dense + BM25 → RRF → local cross-encoder |
 
-Ingestion creates each page/section-aware chunk once. The deterministic
-`chunk_id` is the canonical identity used by both indexes.
+`Hybrid + Reranker` is the v0.3 default. Metadata constraints for category,
+product family, technology, and document type are applied before candidate-list
+truncation. Query analysis never silently converts an inferred product family
+into a filter.
+
+## Bi-encoder versus cross-encoder
+
+The existing Sentence Transformer is a bi-encoder: it embeds the query and every
+chunk independently, making FAISS candidate retrieval efficient. The configured
+cross-encoder processes each query-passage pair jointly, allowing it to model
+their interaction more closely. Because that is more computationally expensive,
+it reranks only a small candidate pool instead of replacing FAISS or BM25.
+
+The default local model is:
 
 ```text
-data/chunks/chunks.jsonl       flattened canonical chunk records
-data/chunks/manifest.json      chunk count and ID digest
-data/vectorstore/              FAISS index and aligned chunk metadata
-data/bm25/index.json           tokenized corpus and chunk ID order
+cross-encoder/ms-marco-MiniLM-L-6-v2
 ```
 
-The BM25 object is rebuilt quickly in memory from its persisted tokens. Startup
-validates chunk counts, IDs, ordering, and digests across canonical chunks,
-FAISS, and BM25. Missing, corrupt, duplicate, or mismatched data produces a
-clear rebuild error.
+It is a compact, established passage-ranking baseline supported directly by
+Sentence Transformers and works on CPU. The score is used only for ordering; it
+is not presented as a calibrated probability. The model loads lazily once per
+application process.
 
-## Setup and indexing
+## Why retrieve 20 and rerank 5?
+
+Initial dense and sparse retrieval favors broad candidate coverage. Reciprocal
+Rank Fusion combines the two rankings without adding incompatible raw scores.
+The cross-encoder then attempts to improve precision inside the top 20 before
+the best five chunks are assembled for Gemini. Different ordering is not itself
+proof of better retrieval; v1.0 will measure that with a golden dataset.
+
+## Query analysis and technical matching
+
+[`src/query_analysis.py`](src/query_analysis.py) deterministically recognizes:
+
+- technologies and identifiers such as `HBM3E`, `LPDDR5X`, `GDDR7`, and `MT25QU`;
+- specifications such as `8800 MT/s`, `1.2 TB/s`, and `24 GB`;
+- comparison questions;
+- conceptual questions;
+- likely product-family labels for debugging only.
+
+BM25 normalization preserves technical distinctions while matching reasonable
+variants. For example, `8800 MT/s`, `8800MT/s`, and `8800 MTps` produce compatible
+numeric/unit tokens. `DDR5-8800` retains the compound identifier and also emits
+`DDR5` and `8800`. No stemming is applied to product codes.
+
+## Why table handling matters
+
+Technical specifications are frequently represented as tables. PyMuPDF inspects
+each page for reliable table geometry. Extracted tables retain their headers,
+row relationships, units, page, title/caption when available, document metadata,
+and Micron URL. Rows become structured text such as:
+
+```text
+Columns: Parameter | Value
+Parameter: Data Rate | Value: 8800 MT/s
+```
+
+Table chunks use deterministic IDs such as `MICRON-DRAM-001_TABLE_0001` and are
+indexed by both FAISS and BM25. Regular page text is always preserved. Failed or
+unreliable table extraction is logged and never causes the original page text to
+be discarded. Perfect extraction from every PDF is not claimed.
+
+## Context, citations, and grounding
+
+After retrieval, highly overlapping chunks from the same page and content type
+are reduced while relevant evidence from the same document remains allowed. A
+configurable character limit controls free-tier context usage. Each evidence
+block includes its canonical chunk ID, document title, page, section, content
+type, original URL, and unchanged content.
+
+Gemini is instructed to preserve values, units, qualifiers, product associations,
+and distinctions between measured, theoretical, typical, maximum, and advertised
+specifications. Returned numeric citation markers are checked against the actual
+evidence list. Invalid markers are removed and reported in the UI. This validates
+marker existence, not whether a passage logically proves a claim.
+
+## Why latency matters
+
+Cross-encoder inference adds work. MemoryLens records query-analysis, dense,
+BM25, RRF, reranking, total retrieval, Gemini-generation, and end-to-end latency
+with a consistent monotonic clock. The Streamlit debug panel exposes these values
+without mixing Gemini time into retrieval-only latency.
+
+## Setup
 
 Python 3.11 or newer is recommended.
 
@@ -109,27 +168,22 @@ pip install -r requirements.txt
 Copy-Item .env.example .env
 ```
 
-Add `GEMINI_API_KEY` to `.env`. Download the corpus when needed:
+Add `GEMINI_API_KEY` to `.env`. Download the corpus if necessary, then rebuild
+the canonical chunks and both indexes:
 
 ```powershell
 python scripts/download_corpus.py
-```
-
-Build canonical chunks plus both indexes:
-
-```powershell
 python scripts/ingest.py
 ```
 
-Or perform download, validation, and ingestion together:
+Or run the combined workflow:
 
 ```powershell
 python scripts/setup_corpus.py
 ```
 
-Ingestion validates the PDFs, extracts and cleans their text, generates one
-canonical chunk dataset, embeds it locally, builds FAISS, tokenizes it for BM25,
-and verifies that all chunk IDs match.
+Cross-encoder reranking needs no separate index; its model downloads on the first
+reranked query and is then cached locally.
 
 ## Run
 
@@ -137,16 +191,14 @@ and verifies that all chunk IDs match.
 streamlit run app.py
 ```
 
-The sidebar selects Dense, BM25, or Hybrid retrieval and optional metadata
-constraints. The retrieved-context panel displays chunk IDs, final ranks,
-document metadata, pages, sections, dense scores/ranks, BM25 scores/ranks, RRF
-scores, and text. Enable **Compare Retrieval Methods** to see all three top-five
-lists for the same query and filters without calling Gemini.
+The UI shows provenance, content type, dense/BM25/RRF/reranker ranks and scores,
+query analysis, latency, and retrieved text. The retrieval-only comparison view
+shows all four top-five lists without calling Gemini.
 
-The command-line smoke test also accepts a mode:
+Command-line smoke test:
 
 ```powershell
-python scripts/smoke_rag.py --mode hybrid "What does the documentation say about HBM3E?"
+python scripts/smoke_rag.py --mode hybrid_rerank "How does HBM3E improve AI inference?"
 ```
 
 ## Configuration
@@ -157,31 +209,25 @@ GEMINI_MODEL=gemini-3.8-flash
 GEMINI_FALLBACK_MODELS=gemini-3.7-flash,gemini-3.6-flash,gemini-3.5-flash-lite
 GEMINI_MAX_RETRIES=1
 GEMINI_RETRY_BASE_SECONDS=1.0
+
 EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
-RETRIEVAL_MODE=hybrid
+RETRIEVAL_MODE=hybrid_rerank
 TOP_K=5
-DENSE_CANDIDATES=15
-BM25_CANDIDATES=15
+DENSE_CANDIDATES=20
+BM25_CANDIDATES=20
 RRF_K=60
+
+RERANKER_MODEL=cross-encoder/ms-marco-MiniLM-L-6-v2
+RERANK_CANDIDATES=20
+RERANK_TOP_K=5
+RERANK_BATCH_SIZE=8
+
+ENABLE_QUERY_ANALYSIS=true
+ENABLE_TABLE_EXTRACTION=true
+CONTEXT_MAX_CHARS=16000
 CHUNK_SIZE=1000
 CHUNK_OVERLAP=150
 ```
-
-`TOP_K` is the final result count. The larger candidate settings feed hybrid
-fusion. Changing the corpus, embedding model, or chunking configuration requires
-another `python scripts/ingest.py` run.
-
-## Useful comparison queries
-
-- Semantic: `Why is high-bandwidth memory important for AI inference?`
-- Exact technology: `What does the documentation say about HBM3E?`
-- Exact identifier: `Find information related to MT25Q.`
-- Numerical: `Which document discusses 8800 MT/s?`
-- Mixed: `How do HBM3E characteristics support high-performance AI workloads?`
-
-The corpus may not contain evidence for every example. An empty lexical match or
-a metadata filter matching no chunks is reported rather than sent to Gemini as
-an invitation to invent an answer.
 
 ## Tests
 
@@ -189,30 +235,44 @@ an invitation to invent an answer.
 python -m unittest discover -s tests -v
 ```
 
-## v0.2 boundary
+The deterministic suite mocks cross-encoder predictions and also creates a local
+PDF table to verify extraction without network or model downloads.
+
+## Roadmap
 
 ```text
-MemoryLens v0.2
-=
+v0.1
 Curated Technical Corpus
-+
-Dense FAISS Retrieval
-+
-BM25 Sparse Retrieval
-+
-Hybrid Retrieval
-+
-Reciprocal Rank Fusion
-+
-Metadata Filtering
-+
-Gemini Grounded Generation
++ Dense FAISS RAG
+
+         ↓
+
+v0.2
+BM25 + Dense
++ Hybrid Retrieval
++ RRF
++ Metadata Filtering
+
+         ↓
+
+v0.3
+Cross-Encoder Reranking
++ Query Analysis
++ Technical Table Handling
++ Improved Context Assembly
+
+         ↓
+
+v1.0
+Golden Evaluation Dataset
++ Recall@K
++ MRR
++ nDCG
++ Answer Faithfulness
++ Citation Correctness
++ Latency Comparison
 ```
 
-The central engineering question is: **Can combining semantic similarity with
-exact lexical matching retrieve better technical evidence than dense search
-alone?**
-
-Cross-encoder or LLM reranking, query expansion, query decomposition, multi-query
-retrieval, HyDE, table-specific retrieval, agents, LangGraph, and advanced
-benchmark evaluation remain deliberately excluded for v0.3 or later.
+MemoryLens v0.3 intentionally excludes agents, LangGraph, paid reranking APIs,
+LLM reranking, query expansion, HyDE, multi-query retrieval, and the full v1.0
+evaluation framework.

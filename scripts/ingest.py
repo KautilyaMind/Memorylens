@@ -40,6 +40,7 @@ def ingest(report: ValidationReport | None = None) -> int:
         LOGGER.error("No chunks were generated")
         return 1
     LOGGER.info("Generated %d chunks", len(chunks))
+    table_chunks = sum(chunk.metadata.get("content_type") == "table" for chunk in chunks)
     ids = chunk_ids(chunks)
     canonical_manifest = write_chunks(chunks, settings.chunks_dir)
     LOGGER.info("Generating local embeddings with %s...", settings.embedding_model)
@@ -62,6 +63,7 @@ def ingest(report: ValidationReport | None = None) -> int:
     LOGGER.info("Saved BM25 index to %s", settings.bm25_dir)
     print(f"Documents parsed: {report.valid_pdfs}")
     print(f"Chunks generated: {len(chunks)}")
+    print(f"Table chunks generated: {table_chunks}")
     print(f"FAISS chunks indexed: {len(faiss_ids)}")
     print(f"BM25 chunks indexed: {len(bm25_ids)}")
     print(
@@ -69,7 +71,7 @@ def ingest(report: ValidationReport | None = None) -> int:
         if canonical_manifest["chunk_id_digest"] == chunk_id_digest(ids)
         else "Chunk ID consistency: ERROR"
     )
-    print("MemoryLens hybrid retrieval ready.")
+    print("MemoryLens v0.3 retrieval indexes ready.")
     return 0
 
 

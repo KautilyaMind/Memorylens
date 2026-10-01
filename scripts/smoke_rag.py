@@ -15,6 +15,7 @@ from src.embeddings import LocalEmbeddings
 from src.gemini_client import GeminiClient
 from src.rag import RAGPipeline
 from src.retriever import DenseRetriever, HybridRetriever
+from src.reranker import CrossEncoderReranker
 from src.vectorstore import VectorStore
 
 
@@ -29,7 +30,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--mode",
-        choices=("dense", "bm25", "hybrid"),
+        choices=("dense", "bm25", "hybrid", "hybrid_rerank"),
         default=settings.retrieval_mode,
     )
     args = parser.parse_args()
@@ -44,6 +45,10 @@ def main() -> int:
         BM25Retriever(BM25Store.load(chunks, settings.bm25_dir), settings.bm25_candidates),
         settings.top_k,
         settings.rrf_k,
+        CrossEncoderReranker(settings.reranker_model, settings.rerank_batch_size),
+        settings.rerank_candidates,
+        settings.rerank_top_k,
+        settings.enable_query_analysis,
     )
     pipeline = RAGPipeline(
         retriever,
@@ -54,6 +59,7 @@ def main() -> int:
             settings.gemini_max_retries,
             settings.gemini_retry_base_seconds,
         ),
+        settings.context_max_chars,
     )
     response = pipeline.answer(args.question, mode=args.mode)
 
@@ -61,6 +67,8 @@ def main() -> int:
     print(f"Model used: {response['model']}")
     print(f"Question: {args.question}")
     print(f"Retrieval mode: {args.mode}")
+    print(f"Query analysis: {response['query_analysis']}")
+    print(f"Timings (ms): {response['timings']}")
     print(f"\nAnswer:\n{response['answer']}")
     print("\nSources:")
     for source in response["sources"]:

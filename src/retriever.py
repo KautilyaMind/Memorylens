@@ -1,16 +1,28 @@
 from __future__ import annotations
 
+import time
+from dataclasses import dataclass
 from typing import Any
 
 from src.bm25_retriever import BM25Retriever
 from src.embeddings import LocalEmbeddings
+from src.query_analysis import analyze_query
+from src.reranker import CrossEncoderReranker
 from src.vectorstore import VectorStore
 
-RETRIEVAL_MODES = ("dense", "bm25", "hybrid")
+RETRIEVAL_MODES = ("dense", "bm25", "hybrid", "hybrid_rerank")
+
+
+@dataclass
+class RetrievalResponse:
+    results: list[dict[str, Any]]
+    analysis: dict[str, Any]
+    timings: dict[str, float]
+    mode: str
 
 
 class DenseRetriever:
-    def __init__(self, store: VectorStore, embeddings: LocalEmbeddings, candidate_count: int = 15):
+    def __init__(self, store: VectorStore, embeddings: LocalEmbeddings, candidate_count: int = 20):
         if candidate_count <= 0:
             raise ValueError("DENSE_CANDIDATES must be positive")
         self.store = store
@@ -76,71 +88,153 @@ class HybridRetriever:
         bm25: BM25Retriever,
         final_top_k: int = 5,
         rrf_k: int = 60,
+        reranker: CrossEncoderReranker | None = None,
+        rerank_candidates: int = 20,
+        rerank_top_k: int = 5,
+        enable_query_analysis: bool = True,
     ):
-        if final_top_k <= 0:
-            raise ValueError("TOP_K must be positive")
-        if rrf_k <= 0:
-            raise ValueError("RRF_K must be positive")
+        for name, value in (
+            ("TOP_K", final_top_k),
+            ("RRF_K", rrf_k),
+            ("RERANK_CANDIDATES", rerank_candidates),
+            ("RERANK_TOP_K", rerank_top_k),
+        ):
+            if value <= 0:
+                raise ValueError(f"{name} must be positive")
         self.dense = dense
         self.bm25 = bm25
         self.final_top_k = final_top_k
         self.rrf_k = rrf_k
+        self.reranker = reranker
+        self.rerank_candidates = rerank_candidates
+        self.rerank_top_k = rerank_top_k
+        self.enable_query_analysis = enable_query_analysis
+        self.last_response: RetrievalResponse | None = None
 
-    def retrieve(
+    @staticmethod
+    def _timings() -> dict[str, float]:
+        return {
+            "query_analysis_ms": 0.0,
+            "dense_retrieval_ms": 0.0,
+            "bm25_retrieval_ms": 0.0,
+            "rrf_ms": 0.0,
+            "reranking_ms": 0.0,
+            "total_retrieval_ms": 0.0,
+        }
+
+    def retrieve_with_debug(
         self,
         query: str,
         filters: dict[str, str] | None = None,
-        mode: str = "hybrid",
+        mode: str = "hybrid_rerank",
         top_k: int | None = None,
-    ) -> list[dict[str, Any]]:
+    ) -> RetrievalResponse:
+        started = time.perf_counter()
         mode = mode.strip().lower()
         if mode not in RETRIEVAL_MODES:
             raise ValueError(f"Unsupported retrieval mode: {mode}")
-        limit = self.final_top_k if top_k is None else top_k
-        if limit <= 0:
-            return []
+        timings = self._timings()
+
+        stage = time.perf_counter()
+        analysis = analyze_query(query) if self.enable_query_analysis else {
+            "query_type": "disabled",
+            "technical_terms": [],
+            "numerical_terms": [],
+            "is_comparison": False,
+            "detected_product_families": [],
+        }
+        timings["query_analysis_ms"] = (time.perf_counter() - stage) * 1000
 
         if mode == "dense":
-            results = self.dense.retrieve(query, filters)
-            return [
+            limit = self.final_top_k if top_k is None else top_k
+            stage = time.perf_counter()
+            raw = self.dense.retrieve(query, filters)
+            timings["dense_retrieval_ms"] = (time.perf_counter() - stage) * 1000
+            results = [
                 {
                     **result,
                     "rank": rank,
                     "final_rank": rank,
                     "bm25_rank": None,
                     "bm25_score": None,
+                    "rrf_rank": None,
                     "rrf_score": None,
+                    "reranker_rank": None,
+                    "reranker_score": None,
                     "score": result["dense_score"],
                 }
-                for rank, result in enumerate(results[:limit], start=1)
+                for rank, result in enumerate(raw[:limit], start=1)
             ]
-        if mode == "bm25":
-            results = self.bm25.retrieve(query, filters)
-            return [
+        elif mode == "bm25":
+            limit = self.final_top_k if top_k is None else top_k
+            stage = time.perf_counter()
+            raw = self.bm25.retrieve(query, filters)
+            timings["bm25_retrieval_ms"] = (time.perf_counter() - stage) * 1000
+            results = [
                 {
                     **result,
                     "rank": rank,
                     "final_rank": rank,
                     "dense_rank": None,
                     "dense_score": None,
+                    "rrf_rank": None,
                     "rrf_score": None,
+                    "reranker_rank": None,
+                    "reranker_score": None,
                     "score": result["bm25_score"],
                 }
-                for rank, result in enumerate(results[:limit], start=1)
+                for rank, result in enumerate(raw[:limit], start=1)
             ]
+        else:
+            stage = time.perf_counter()
+            dense_results = self.dense.retrieve(query, filters)
+            timings["dense_retrieval_ms"] = (time.perf_counter() - stage) * 1000
+            stage = time.perf_counter()
+            bm25_results = self.bm25.retrieve(query, filters)
+            timings["bm25_retrieval_ms"] = (time.perf_counter() - stage) * 1000
+            stage = time.perf_counter()
+            fused = reciprocal_rank_fusion(dense_results, bm25_results, self.rrf_k)
+            fused = [
+                {
+                    **result,
+                    "rrf_rank": rank,
+                    "rank": rank,
+                    "final_rank": rank,
+                    "reranker_rank": None,
+                    "reranker_score": None,
+                    "score": result["rrf_score"],
+                }
+                for rank, result in enumerate(fused, start=1)
+            ]
+            timings["rrf_ms"] = (time.perf_counter() - stage) * 1000
+            if mode == "hybrid":
+                limit = self.final_top_k if top_k is None else top_k
+                results = fused[:limit]
+            else:
+                if self.reranker is None:
+                    raise RuntimeError(
+                        "Hybrid + Reranker mode is unavailable because no reranker is configured"
+                    )
+                limit = self.rerank_top_k if top_k is None else top_k
+                stage = time.perf_counter()
+                results = self.reranker.rerank(
+                    query, fused[: self.rerank_candidates], limit
+                )
+                timings["reranking_ms"] = (time.perf_counter() - stage) * 1000
 
-        dense_results = self.dense.retrieve(query, filters)
-        bm25_results = self.bm25.retrieve(query, filters)
-        fused = reciprocal_rank_fusion(dense_results, bm25_results, self.rrf_k)
-        return [
-            {
-                **result,
-                "rank": rank,
-                "final_rank": rank,
-                "score": result["rrf_score"],
-            }
-            for rank, result in enumerate(fused[:limit], start=1)
-        ]
+        timings["total_retrieval_ms"] = (time.perf_counter() - started) * 1000
+        response = RetrievalResponse(results, analysis, timings, mode)
+        self.last_response = response
+        return response
+
+    def retrieve(
+        self,
+        query: str,
+        filters: dict[str, str] | None = None,
+        mode: str = "hybrid_rerank",
+        top_k: int | None = None,
+    ) -> list[dict[str, Any]]:
+        return self.retrieve_with_debug(query, filters, mode, top_k).results
 
     def compare(
         self, query: str, filters: dict[str, str] | None = None

@@ -10,6 +10,7 @@ from src.bm25_retriever import BM25Retriever, BM25Store, technical_tokenize
 from src.chunk_store import load_chunks, write_chunks
 from src.metadata import Chunk
 from src.rag import RAGPipeline
+from src.reranker import CrossEncoderReranker
 from src.retriever import DenseRetriever, HybridRetriever, reciprocal_rank_fusion
 from src.vectorstore import VectorStore
 
@@ -38,6 +39,11 @@ class StaticRetriever:
 
     def retrieve(self, query: str, filters=None, top_k=None):
         return self.results
+
+
+class StaticCrossEncoder:
+    def predict(self, pairs, batch_size=8, show_progress_bar=False):
+        return [1.0 for _ in pairs]
 
 
 class FailingGenerator:
@@ -87,9 +93,17 @@ class HybridRetrievalTests(unittest.TestCase):
             canonical = load_chunks(root / "chunks")
             store = BM25Store.build(canonical, root / "bm25")
             loaded = BM25Store.load(canonical, root / "bm25")
+            vectors = np.asarray(
+                [[1.0, 0.0], [0.0, 1.0], [0.7, 0.7]], dtype="float32"
+            )
+            vector_store = VectorStore.build(vectors, canonical, root / "faiss")
             self.assertEqual(
                 [chunk.metadata["chunk_id"] for chunk in canonical],
                 [chunk.metadata["chunk_id"] for chunk in loaded.chunks],
+            )
+            self.assertEqual(
+                [chunk.metadata["chunk_id"] for chunk in canonical],
+                [chunk.metadata["chunk_id"] for chunk in vector_store.chunks],
             )
             results = BM25Retriever(store).retrieve("MT25Q")
             self.assertEqual("NOR_001_CH_0001", results[0]["chunk_id"])
@@ -126,17 +140,26 @@ class HybridRetrievalTests(unittest.TestCase):
 
     def test_hybrid_exposes_all_modes_and_debug_ranks(self) -> None:
         dense = StaticRetriever(
-            [{"chunk_id": "A", "title": "A", "dense_rank": 1, "dense_score": 0.9}]
+            [{"chunk_id": "A", "title": "A", "text": "HBM3E", "dense_rank": 1, "dense_score": 0.9}]
         )
         bm25 = StaticRetriever(
-            [{"chunk_id": "A", "title": "A", "bm25_rank": 1, "bm25_score": 5.0}]
+            [{"chunk_id": "A", "title": "A", "text": "HBM3E", "bm25_rank": 1, "bm25_score": 5.0}]
         )
-        retriever = HybridRetriever(dense, bm25, final_top_k=5, rrf_k=60)
+        retriever = HybridRetriever(
+            dense,
+            bm25,
+            final_top_k=5,
+            rrf_k=60,
+            reranker=CrossEncoderReranker("fake", model=StaticCrossEncoder()),
+        )
         hybrid = retriever.retrieve("HBM3E", mode="hybrid")
         self.assertEqual(1, hybrid[0]["dense_rank"])
         self.assertEqual(1, hybrid[0]["bm25_rank"])
         self.assertEqual(1, hybrid[0]["final_rank"])
-        self.assertEqual({"dense", "bm25", "hybrid"}, set(retriever.compare("HBM3E")))
+        self.assertEqual(
+            {"dense", "bm25", "hybrid", "hybrid_rerank"},
+            set(retriever.compare("HBM3E")),
+        )
 
     def test_no_matching_evidence_does_not_call_generator(self) -> None:
         retriever = HybridRetriever(

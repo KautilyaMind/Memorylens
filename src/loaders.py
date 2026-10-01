@@ -93,13 +93,134 @@ def extract_pdf_pages(path: Path, entry: dict[str, Any]) -> list[Document]:
     for page_number, lines in enumerate(raw_pages, start=1):
         text = _clean_page(lines, repeated)
         if text:
-            documents.append(Document(text, {**metadata, "page": page_number}))
+            documents.append(
+                Document(
+                    text,
+                    {
+                        **metadata,
+                        "page": page_number,
+                        "content_type": "text",
+                        "contains_table": False,
+                        "table_title": "",
+                    },
+                )
+            )
     if not documents:
         raise ValueError(f"PDF contains no extractable text: {path}")
     return documents
 
 
-def load_corpus(corpus_dir: Path = settings.corpus_dir) -> list[Document]:
+def _clean_cell(value: Any) -> str:
+    return re.sub(r"\s+", " ", str(value or "")).strip()
+
+
+def _table_title(page: Any, bbox: tuple[float, float, float, float], headers: list[str]) -> str:
+    candidates: list[tuple[float, str]] = []
+    for block in page.get_text("blocks", sort=True):
+        if len(block) < 5 or float(block[3]) > float(bbox[1]) + 2:
+            continue
+        lines = [line.strip() for line in str(block[4]).splitlines() if line.strip()]
+        if lines:
+            candidates.append((float(block[3]), lines[-1]))
+    if candidates:
+        candidate = max(candidates, key=lambda item: item[0])[1]
+        if 3 <= len(candidate) <= 160:
+            return candidate
+    return " | ".join(header for header in headers if header)[:160]
+
+
+def _serialize_table(
+    rows: list[list[Any]],
+    title: str,
+    document_title: str,
+    page_number: int,
+) -> str:
+    width = max((len(row) for row in rows), default=0)
+    if width < 2:
+        return ""
+    cleaned = [[_clean_cell(row[index]) if index < len(row) else "" for index in range(width)] for row in rows]
+    headers = [cell or f"Column {index + 1}" for index, cell in enumerate(cleaned[0])]
+    body = cleaned[1:]
+    if not any(any(cell for cell in row) for row in body):
+        return ""
+    lines = [
+        f"Document: {document_title}",
+        f"Table: {title or 'Untitled table'}",
+        f"Page: {page_number}",
+        "Columns: " + " | ".join(headers),
+    ]
+    for row in body:
+        values = [
+            f"{headers[index]}: {cell}"
+            for index, cell in enumerate(row)
+            if cell
+        ]
+        if values:
+            lines.append(" | ".join(values))
+    return "\n".join(lines).strip()
+
+
+def extract_pdf_tables(path: Path, entry: dict[str, Any]) -> list[Document]:
+    metadata = normalize_metadata(entry, str(path.resolve()))
+    documents: list[Document] = []
+    table_index = 0
+    try:
+        with pymupdf.open(path) as pdf:
+            for page_number, page in enumerate(pdf, start=1):
+                try:
+                    tables = page.find_tables().tables
+                except Exception as exc:
+                    LOGGER.warning(
+                        "Table inspection failed for %s page %d: %s",
+                        path.name,
+                        page_number,
+                        exc,
+                    )
+                    continue
+                for table in tables:
+                    try:
+                        rows = table.extract()
+                        if not rows:
+                            continue
+                        header_names = [
+                            _clean_cell(value) for value in getattr(table.header, "names", [])
+                        ]
+                        title = _table_title(page, table.bbox, header_names)
+                        text = _serialize_table(
+                            rows, title, str(entry["title"]), page_number
+                        )
+                        if len(text) < 40:
+                            continue
+                        table_index += 1
+                        documents.append(
+                            Document(
+                                text,
+                                {
+                                    **metadata,
+                                    "page": page_number,
+                                    "content_type": "table",
+                                    "contains_table": True,
+                                    "table_title": title,
+                                    "table_index": table_index,
+                                },
+                            )
+                        )
+                    except Exception as exc:
+                        LOGGER.warning(
+                            "Skipping unreliable table in %s page %d: %s",
+                            path.name,
+                            page_number,
+                            exc,
+                        )
+    except Exception as exc:
+        LOGGER.warning("Could not inspect tables in %s: %s", path, exc)
+    return documents
+
+
+def load_corpus(
+    corpus_dir: Path = settings.corpus_dir,
+    enable_table_extraction: bool = settings.enable_table_extraction,
+) -> list[Document]:
     documents: list[Document] = []
     for entry in load_document_manifest():
         path = document_path(entry, corpus_dir)
@@ -108,4 +229,8 @@ def load_corpus(corpus_dir: Path = settings.corpus_dir) -> list[Document]:
             continue
         LOGGER.info("Loading %s", path.name)
         documents.extend(extract_pdf_pages(path, entry))
+        if enable_table_extraction:
+            tables = extract_pdf_tables(path, entry)
+            LOGGER.info("Extracted %d tables from %s", len(tables), path.name)
+            documents.extend(tables)
     return documents

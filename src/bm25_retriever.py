@@ -50,11 +50,35 @@ GENERIC_STOP_WORDS = {
 
 def technical_tokenize(text: str) -> list[str]:
     """Tokenize without stemming away product codes, units, or numeric specs."""
-    return [
-        token.lower()
-        for token in TOKEN_RE.findall(text)
-        if token.lower() not in GENERIC_STOP_WORDS
-    ]
+    output: list[str] = []
+    for raw in TOKEN_RE.findall(text):
+        token = raw.lower()
+        if token in GENERIC_STOP_WORDS:
+            continue
+        joined_spec = re.fullmatch(
+            r"(\d+(?:\.\d+)?)(mt/s|mtps|gt/s|gb/s|tb/s|gbps|tbps)", token
+        )
+        if joined_spec:
+            number, unit = joined_spec.groups()
+            output.extend((number, _normalize_unit(unit)))
+            continue
+        if token in {"mtps", "mt/s", "gt/s", "gb/s", "tb/s", "gbps", "tbps"}:
+            output.append(_normalize_unit(token))
+            continue
+        ddr_speed = re.fullmatch(r"((?:lp)?ddr\d+x?|gddr\d+|hbm\d+e?)-(\d+)", token)
+        if ddr_speed:
+            output.extend((token, ddr_speed.group(1), ddr_speed.group(2)))
+            continue
+        output.append(token)
+    return output
+
+
+def _normalize_unit(unit: str) -> str:
+    return {
+        "mtps": "mt/s",
+        "gbps": "gb/s",
+        "tbps": "tb/s",
+    }.get(unit, unit)
 
 
 class BM25Store:

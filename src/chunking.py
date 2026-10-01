@@ -80,16 +80,23 @@ def chunk_documents(documents: list[Document], size: int, overlap: int) -> list[
                 )
 
     counters: defaultdict[str, int] = defaultdict(int)
+    table_counters: defaultdict[str, int] = defaultdict(int)
     chunks: list[Chunk] = []
     for text, metadata in pending:
         document_id = str(metadata["document_id"])
-        counters[document_id] += 1
-        contains_table = _contains_table(text)
+        is_table = metadata.get("content_type") == "table"
+        if is_table:
+            table_counters[document_id] += 1
+            chunk_id = f"{document_id}_TABLE_{table_counters[document_id]:04d}"
+        else:
+            counters[document_id] += 1
+            chunk_id = f"{document_id}_CH_{counters[document_id]:04d}"
+        contains_table = bool(metadata.get("contains_table")) or _contains_table(text)
         metadata = {
             **metadata,
-            "chunk_id": f"{document_id}_CH_{counters[document_id]:04d}",
+            "chunk_id": chunk_id,
             "page": int(metadata.get("page", 0) or 0),
-            "content_type": "table" if contains_table else "text",
+            "content_type": "table" if is_table or contains_table else "text",
             "contains_numeric_specs": bool(NUMERIC_SPEC_RE.search(text)),
             "contains_part_number": bool(PART_NUMBER_RE.search(text)),
             "contains_table": contains_table,
