@@ -8,6 +8,7 @@ import faiss
 import numpy as np
 
 from src.metadata import Chunk
+from src.retriever_filters import matches_filters
 
 INDEX_FILE = "index.faiss"
 CHUNKS_FILE = "chunks.jsonl"
@@ -60,27 +61,50 @@ class VectorStore:
             for chunk in self.chunks:
                 handle.write(json.dumps({"text": chunk.text, "metadata": chunk.metadata}, ensure_ascii=False) + "\n")
 
-    def search(self, query_embedding: np.ndarray, top_k: int) -> list[dict[str, Any]]:
+    def search(
+        self,
+        query_embedding: np.ndarray,
+        top_k: int,
+        filters: dict[str, str] | None = None,
+    ) -> list[dict[str, Any]]:
         if top_k <= 0:
             return []
         scores, indices = self.index.search(
             np.ascontiguousarray(query_embedding, dtype="float32"),
-            min(top_k, len(self.chunks)),
+            len(self.chunks),
         )
         results: list[dict[str, Any]] = []
-        for rank, (index, score) in enumerate(zip(indices[0], scores[0]), start=1):
+        for index, score in zip(indices[0], scores[0]):
             if index < 0:
                 continue
             chunk = self.chunks[int(index)]
-            results.append({"rank": rank, "score": float(score), "text": chunk.text, **chunk.metadata})
+            if not matches_filters(chunk.metadata, filters):
+                continue
+            results.append(
+                {
+                    "text": chunk.text,
+                    **chunk.metadata,
+                    "dense_score": float(score),
+                    "dense_rank": len(results) + 1,
+                }
+            )
+            if len(results) >= top_k:
+                break
         return results
 
 
-def write_index_manifest(directory: Path, model_name: str, chunk_count: int, document_count: int) -> None:
+def write_index_manifest(
+    directory: Path,
+    model_name: str,
+    chunk_count: int,
+    document_count: int,
+    chunk_id_digest: str,
+) -> None:
     payload = {
         "embedding_model": model_name,
         "chunk_count": chunk_count,
         "document_count": document_count,
+        "chunk_id_digest": chunk_id_digest,
     }
     (directory / MANIFEST_FILE).write_text(json.dumps(payload, indent=2), encoding="utf-8")
 

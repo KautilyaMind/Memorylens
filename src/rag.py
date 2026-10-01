@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from src.gemini_client import GeminiClient
-from src.retriever import DenseRetriever
+from src.retriever import HybridRetriever
 
 SYSTEM_RULES = """You are answering questions about memory and storage technology using only the supplied retrieved evidence.
 
@@ -41,18 +41,24 @@ def build_prompt(question: str, results: list[dict[str, Any]]) -> str:
 
 
 class RAGPipeline:
-    def __init__(self, retriever: DenseRetriever, generator: GeminiClient):
+    def __init__(self, retriever: HybridRetriever, generator: GeminiClient):
         self.retriever = retriever
         self.generator = generator
 
-    def answer(self, question: str) -> dict[str, Any]:
-        results = self.retriever.retrieve(question)
+    def answer(
+        self,
+        question: str,
+        filters: dict[str, str] | None = None,
+        mode: str = "hybrid",
+    ) -> dict[str, Any]:
+        results = self.retriever.retrieve(question, filters=filters, mode=mode)
         if not results:
             return {
                 "answer": "The indexed evidence is insufficient to answer this question.",
                 "model": None,
                 "sources": [],
                 "results": [],
+                "retrieval_mode": mode,
             }
         generation = self.generator.generate(build_prompt(question, results))
         sources = [
@@ -71,4 +77,5 @@ class RAGPipeline:
             "model": generation.model,
             "sources": sources,
             "results": results,
+            "retrieval_mode": mode,
         }

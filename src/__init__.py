@@ -1,1 +1,1 @@
-"""MemoryLens v0.1: a small, explainable dense-retrieval RAG system."""
+"""MemoryLens v0.2: explainable dense, sparse, and hybrid technical RAG."""

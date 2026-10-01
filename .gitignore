@@ -9,5 +9,7 @@ corpus/**/*.md
 corpus/**/*.metadata.yaml
 corpus/**/*.pdf
 data/parsed/
+data/chunks/
+data/bm25/
 data/vectorstore/
 !.gitkeep

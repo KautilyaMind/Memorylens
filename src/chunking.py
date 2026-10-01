@@ -5,7 +5,7 @@ from collections import defaultdict
 
 from src.metadata import Chunk, Document
 
-PART_NUMBER_RE = re.compile(r"\b(?:MT|MTA|MTFD)[A-Z0-9-]{5,}\b", re.IGNORECASE)
+PART_NUMBER_RE = re.compile(r"\b(?:MTFD|MTA|MT)[A-Z0-9-]{3,}\b", re.IGNORECASE)
 NUMERIC_SPEC_RE = re.compile(
     r"\b\d+(?:\.\d+)?\s?(?:GB|Gb|TB|MHz|GHz|MT/s|MTPS|MB/s|GB/s|TB/s|V|mV|W|mW|ns|µs|IOPS)\b",
     re.IGNORECASE,
