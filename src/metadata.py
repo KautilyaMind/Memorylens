@@ -31,6 +31,12 @@ class Chunk:
 
 def normalize_metadata(raw: dict[str, Any], file_path: str) -> dict[str, Any]:
     """Return JSON-safe document metadata with a stable field set."""
+    path = Path(file_path).resolve()
+    project_root = Path(__file__).resolve().parents[1]
+    try:
+        portable_path = path.relative_to(project_root).as_posix()
+    except ValueError:
+        portable_path = path.name
     return {
         "document_id": str(raw.get("document_id", "")),
         "title": str(raw.get("title", "Untitled")),
@@ -41,7 +47,7 @@ def normalize_metadata(raw: dict[str, Any], file_path: str) -> dict[str, Any]:
         "product_family": str(raw.get("product_family", "")),
         "technology": str(raw.get("technology", "")),
         "document_type": str(raw.get("document_type", "")),
-        "file_path": file_path,
+        "file_path": portable_path,
     }
 
 

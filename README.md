@@ -208,6 +208,15 @@ Do this only after reviewing any chunking or relevance-judgment changes.
 streamlit run app.py
 ```
 
+### Streamlit Community Cloud
+
+Use `app.py` as the main file on the `main` branch. The repository includes the
+frozen canonical chunks plus matching FAISS and BM25 artifacts under `data/`, so
+the hosted application can start without downloading the source PDFs or running
+ingestion during deployment. Add `GEMINI_API_KEY` and any approved model settings
+to the app's Streamlit Secrets. The PDFs, local `.env`, and model caches remain
+excluded from Git.
+
 End-to-end command-line smoke test:
 
 ```powershell

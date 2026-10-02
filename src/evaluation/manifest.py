@@ -26,6 +26,8 @@ def build_evaluation_manifest(chunks: list[Any], dataset_path: Path) -> dict[str
         if document_id in documents:
             continue
         file_path = Path(str(metadata.get("file_path", "")))
+        if not file_path.is_absolute():
+            file_path = settings.project_root / file_path
         documents[document_id] = {
             "file_name": str(metadata.get("file_name", "")),
             "sha256": sha256_file(file_path) if file_path.is_file() else "unavailable",

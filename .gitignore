@@ -9,9 +9,18 @@ corpus/**/*.md
 corpus/**/*.metadata.yaml
 corpus/**/*.pdf
 data/parsed/
-data/chunks/
-data/bm25/
-data/vectorstore/
+# Keep the reproducible retrieval snapshot required by Streamlit Cloud while
+# ignoring any other generated files placed in these directories.
+data/chunks/*
+!data/chunks/chunks.jsonl
+!data/chunks/manifest.json
+data/bm25/*
+!data/bm25/index.json
+data/vectorstore/*
+!data/vectorstore/.gitkeep
+!data/vectorstore/chunks.jsonl
+!data/vectorstore/index.faiss
+!data/vectorstore/index_manifest.json
 evaluation/results/retrieval-*.json
 evaluation/results/retrieval-*.csv
 evaluation/results/summary-*.csv
