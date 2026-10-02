@@ -1,0 +1,54 @@
+{
+  "total_records": 30,
+  "generated_answers": 30,
+  "citation_marker_integrity_passed": 30,
+  "unanswerable_with_explicit_insufficiency": 6,
+  "human_reviewed": 0,
+  "pending": 30,
+  "by_mode": {
+    "dense": {
+      "generated": 6,
+      "reviewed": 0,
+      "mean_scores": {
+        "correctness": null,
+        "faithfulness": null,
+        "citation_correctness": null,
+        "abstention": null
+      },
+      "automatic_citation_marker_integrity_rate": 1
+    },
+    "bm25": {
+      "generated": 6,
+      "reviewed": 0,
+      "mean_scores": {
+        "correctness": null,
+        "faithfulness": null,
+        "citation_correctness": null,
+        "abstention": null
+      },
+      "automatic_citation_marker_integrity_rate": 1
+    },
+    "hybrid": {
+      "generated": 6,
+      "reviewed": 0,
+      "mean_scores": {
+        "correctness": null,
+        "faithfulness": null,
+        "citation_correctness": null,
+        "abstention": null
+      },
+      "automatic_citation_marker_integrity_rate": 1
+    },
+    "hybrid_rerank": {
+      "generated": 12,
+      "reviewed": 0,
+      "mean_scores": {
+        "correctness": null,
+        "faithfulness": null,
+        "citation_correctness": null,
+        "abstention": null
+      },
+      "automatic_citation_marker_integrity_rate": 1
+    }
+  }
+}

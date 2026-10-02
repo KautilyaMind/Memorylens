@@ -1,189 +1,206 @@
-# MemoryLens v0.3
+# MemoryLens v1.0
 
-MemoryLens is a Retrieval-Augmented Generation system over a curated corpus of
-public Micron technical PDFs covering DRAM, NAND, NOR, and memory-related AI/HPC
-technologies. Version 0.3 preserves every v0.2 retrieval mode and adds local
-cross-encoder reranking, deterministic query analysis, technical-table chunks,
-improved context assembly, citation-marker validation, and retrieval latency
-instrumentation.
+MemoryLens is an advanced Retrieval-Augmented Generation project over a curated
+corpus of publicly available Micron technical PDFs covering DRAM, NAND, NOR,
+AI, and high-performance computing. The final version adds a reproducible
+retrieval benchmark, latency analysis, answer-review workflow, exportable
+reports, and a saved-results Streamlit dashboard to the v0.3 application.
 
-Gemini receives only the selected evidence and retains the explicitly configured
-free-model fallback chain. MemoryLens does not use an LLM for query analysis,
-reranking, ingestion, or routing.
+MemoryLens is an independent educational project. It is not affiliated with or
+endorsed by Micron Technology.
 
 ## Architecture
 
 ```text
-                   User Query
-                       ↓
-              Lightweight Query Analysis
-                       ↓
-                Metadata Filters
-                       ↓
-              ┌────────┴────────┐
-              ↓                 ↓
-         Dense Search       BM25 Search
-            FAISS               ↓
-              └────────┬────────┘
-                       ↓
-             Reciprocal Rank Fusion
-                       ↓
-              Top 20 Candidates
-                       ↓
-             Local Cross-Encoder
-                       ↓
-                Best 5 Chunks
-                       ↓
-              Context Assembly
-                       ↓
-                    Gemini
-                       ↓
-       Grounded Answer + Validated Citations
-```
-
-Ingestion uses one canonical chunk dataset for both indexes:
-
-```text
 Curated Micron PDFs
-         ↓
-    PDF Extraction
-     ┌───┴───┐
-     ↓       ↓
-   Text    Tables
-     └───┬───┘
-         ↓
- Canonical JSONL Chunks
-     ┌───┴───┐
-     ↓       ↓
-   FAISS    BM25
+        │
+        ▼
+PyMuPDF text + table extraction
+        │
+        ▼
+Canonical text/table chunks
+        │
+   ┌────┴────┐
+   ▼         ▼
+ FAISS      BM25
+   └────┬────┘
+        ▼
+Reciprocal Rank Fusion
+        ▼
+Local cross-encoder reranking
+        ▼
+Context assembly → Gemini → answer + validated citation markers
+        │
+        ▼
+Frozen benchmark, ranking metrics, latency, error analysis, dashboard
 ```
 
-Chunk counts, canonical IDs, ordering, and SHA-256 identity digests are checked
-across canonical JSONL, FAISS, and BM25 data.
+The application preserves four independently evaluated configurations:
 
-## Retrieval modes
+| UI name | Evaluation name | Pipeline |
+|---|---|---|
+| Dense | Baseline | Sentence Transformer → FAISS |
+| BM25 | Sparse | Technical tokenizer → BM25 |
+| Hybrid | Hybrid | FAISS + BM25 → RRF |
+| Hybrid + Reranker | Advanced | FAISS + BM25 → RRF → cross-encoder |
 
-The Streamlit sidebar supports four comparable modes:
+Advanced remains the default. All modes use the same 343 canonical chunks and
+metadata constraints. The advanced pipeline retrieves 20 candidates and reranks
+them locally with `cross-encoder/ms-marco-MiniLM-L-6-v2`; its scores are ranking
+scores, not calibrated probabilities.
 
-| Mode | Pipeline |
-|---|---|
-| Dense | Local bi-encoder → FAISS |
-| BM25 | Technical tokens → BM25 |
-| Hybrid | Dense + BM25 → RRF |
-| Hybrid + Reranker | Dense + BM25 → RRF → local cross-encoder |
+## Frozen evaluation dataset
 
-`Hybrid + Reranker` is the v0.3 default. Metadata constraints for category,
-product family, technology, and document type are applied before candidate-list
-truncation. Query analysis never silently converts an inferred product family
-into a filter.
+[`evaluation/datasets/golden.jsonl`](evaluation/datasets/golden.jsonl) contains:
 
-## Bi-encoder versus cross-encoder
+- 60 answerable technical questions;
+- 10 each for semantic, exact terminology, numerical, comparison, table, and
+  cross-document retrieval;
+- six separate unanswerable controls;
+- graded chunk relevance (`0`, `1`, `2`), reference answers, notes, difficulty,
+  and actual canonical document/chunk IDs.
 
-The existing Sentence Transformer is a bi-encoder: it embeds the query and every
-chunk independently, making FAISS candidate retrieval efficient. The configured
-cross-encoder processes each query-passage pair jointly, allowing it to model
-their interaction more closely. Because that is more computationally expensive,
-it reranks only a small candidate pool instead of replacing FAISS or BM25.
+All references validate against the current 16-document, 343-chunk corpus.
+`review_status: corpus_verified` means the label and answer were checked against
+the stored evidence passage during implementation. It does not represent
+independent human sign-off. The repository deliberately retains that distinction
+instead of presenting synthetic or self-reviewed labels as human ground truth.
 
-The default local model is:
+[`evaluation/manifest.json`](evaluation/manifest.json) freezes the benchmark
+hash, PDF hashes, document IDs, canonical chunk digest, chunking parameters,
+embedding and reranker models, tokenizer version, FAISS version, and retrieval
+candidate configuration. Evaluation stops when the current corpus or settings
+do not match this manifest, preventing obsolete chunk judgments from being used
+silently.
 
-```text
-cross-encoder/ms-marco-MiniLM-L-6-v2
+## Retrieval metrics
+
+The runner reports per-question values, aggregate mean/variability, and category
+breakdowns for:
+
+- Recall@3, Recall@5, and Recall@10;
+- Mean Reciprocal Rank;
+- nDCG@5 and nDCG@10 using gain `2^relevance - 1` and discount
+  `log2(rank + 1)`.
+
+Questions without relevant chunks are excluded from ranking aggregates. They
+are handled by the answer-abstention review workflow.
+
+## Measured results
+
+The checked-in run used two warmed steady-state retrieval runs for each of 60
+questions and each of four modes on CPU. Model/runtime loading and the 2.5-second
+warmup were recorded separately from steady-state retrieval latency.
+
+| Method | Recall@3 | Recall@5 | Recall@10 | MRR | nDCG@5 | nDCG@10 | Median ms | p95 ms |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Dense | 0.417 | 0.531 | 0.683 | 0.450 | 0.415 | 0.470 | 27.2 | 40.2 |
+| BM25 | 0.533 | 0.639 | 0.828 | 0.547 | 0.507 | 0.571 | 2.7 | 3.8 |
+| Hybrid | 0.511 | 0.689 | 0.789 | 0.511 | 0.519 | 0.551 | 28.1 | 39.6 |
+| Hybrid + Reranker | 0.583 | 0.733 | 0.864 | 0.593 | 0.582 | 0.632 | 1,603.6 | 2,181.7 |
+
+For this frozen benchmark, the cross-encoder improved the overall ranking
+metrics relative to Hybrid but increased median retrieval latency by about 57×.
+The outcome is not uniformly better:
+
+- Hybrid Recall@5 was `0.670` for comparison questions versus `0.620` for
+  reranking.
+- Dense and Hybrid Recall@5 were `0.470` and `0.520` for cross-document
+  questions versus `0.330` for reranking.
+- Reranking performed strongly on table questions (`1.000` Recall@5) and led
+  the numerical, semantic, and overall aggregates.
+- BM25 was both fast and competitive for exact terminology and numerical
+  questions.
+
+These measurements describe this corpus, benchmark, model configuration, and
+machine only. They are not a general claim that one retrieval architecture is
+universally superior. See
+[`evaluation/reports/latest.md`](evaluation/reports/latest.md) for methodology,
+category results, representative failures, and evidence excerpts.
+
+## Answer and citation evaluation
+
+Retrieval quality does not establish answer correctness. The separate review
+workflow creates a balanced 30-item queue: 24 answerable questions distributed
+across the four retrieval modes and six advanced-mode abstention controls.
+
+The rubric scores factual correctness, faithfulness to retrieved evidence,
+substantive citation support, and abstention on unsupported questions.
+Citation-marker integrity is checked automatically, but evidentiary support
+requires a named reviewer. The checked-in queue remains explicitly
+`pending_human_review`; no human-review scores are fabricated. All 30 generation
+records were populated using the configured fallback chain, all retained citation
+markers passed source-range validation, and all six unanswerable outputs explicitly
+reported insufficient evidence. Those automatic observations are not substitutes
+for the rubric scores.
+
+```powershell
+# Create a blank review queue
+python scripts/evaluate_answers.py
+
+# Populate the queue with actual Gemini answers before human review
+python scripts/evaluate_answers.py --generate
+
+# After a reviewer fills scores, produce the review summary
+python scripts/evaluate_answers.py --summarize
 ```
 
-It is a compact, established passage-ranking baseline supported directly by
-Sentence Transformers and works on CPU. The score is used only for ordering; it
-is not presented as a calibrated probability. The model loads lazily once per
-application process.
+## Streamlit application
 
-## Why retrieve 20 and rerank 5?
+The final UI has three areas:
 
-Initial dense and sparse retrieval favors broad candidate coverage. Reciprocal
-Rank Fusion combines the two rankings without adding incompatible raw scores.
-The cross-encoder then attempts to improve precision inside the top 20 before
-the best five chunks are assembled for Gemini. Different ordering is not itself
-proof of better retrieval; v1.0 will measure that with a golden dataset.
+- **Ask** — query the corpus using any retrieval mode or compare all four.
+- **Inspect** — review the last answer, source passages, canonical IDs, metadata,
+  scores, citations, query analysis, and stage latency.
+- **Evaluate** — explore the saved benchmark summary, metric/latency charts,
+  category results, and per-question rankings with relevance grades.
 
-## Query analysis and technical matching
+The dashboard loads `evaluation/results/latest.json`; it never reruns the full
+benchmark during a Streamlit refresh.
 
-[`src/query_analysis.py`](src/query_analysis.py) deterministically recognizes:
-
-- technologies and identifiers such as `HBM3E`, `LPDDR5X`, `GDDR7`, and `MT25QU`;
-- specifications such as `8800 MT/s`, `1.2 TB/s`, and `24 GB`;
-- comparison questions;
-- conceptual questions;
-- likely product-family labels for debugging only.
-
-BM25 normalization preserves technical distinctions while matching reasonable
-variants. For example, `8800 MT/s`, `8800MT/s`, and `8800 MTps` produce compatible
-numeric/unit tokens. `DDR5-8800` retains the compound identifier and also emits
-`DDR5` and `8800`. No stemming is applied to product codes.
-
-## Why table handling matters
-
-Technical specifications are frequently represented as tables. PyMuPDF inspects
-each page for reliable table geometry. Extracted tables retain their headers,
-row relationships, units, page, title/caption when available, document metadata,
-and Micron URL. Rows become structured text such as:
-
-```text
-Columns: Parameter | Value
-Parameter: Data Rate | Value: 8800 MT/s
-```
-
-Table chunks use deterministic IDs such as `MICRON-DRAM-001_TABLE_0001` and are
-indexed by both FAISS and BM25. Regular page text is always preserved. Failed or
-unreliable table extraction is logged and never causes the original page text to
-be discarded. Perfect extraction from every PDF is not claimed.
-
-## Context, citations, and grounding
-
-After retrieval, highly overlapping chunks from the same page and content type
-are reduced while relevant evidence from the same document remains allowed. A
-configurable character limit controls free-tier context usage. Each evidence
-block includes its canonical chunk ID, document title, page, section, content
-type, original URL, and unchanged content.
-
-Gemini is instructed to preserve values, units, qualifiers, product associations,
-and distinctions between measured, theoretical, typical, maximum, and advertised
-specifications. Returned numeric citation markers are checked against the actual
-evidence list. Invalid markers are removed and reported in the UI. This validates
-marker existence, not whether a passage logically proves a claim.
-
-## Why latency matters
-
-Cross-encoder inference adds work. MemoryLens records query-analysis, dense,
-BM25, RRF, reranking, total retrieval, Gemini-generation, and end-to-end latency
-with a consistent monotonic clock. The Streamlit debug panel exposes these values
-without mixing Gemini time into retrieval-only latency.
-
-## Setup
+## Reproducible setup
 
 Python 3.11 or newer is recommended.
 
 ```powershell
+git clone https://github.com/KautilyaMind/Memorylens.git
+cd Memorylens
 python -m venv .venv
 .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 Copy-Item .env.example .env
 ```
 
-Add `GEMINI_API_KEY` to `.env`. Download the corpus if necessary, then rebuild
-the canonical chunks and both indexes:
+Add `GEMINI_API_KEY` to `.env`. Only the explicitly configured primary and
+fallback Gemini models are used.
+
+Download and validate the curated corpus, then build canonical chunks and both
+indexes:
 
 ```powershell
 python scripts/download_corpus.py
 python scripts/ingest.py
 ```
 
-Or run the combined workflow:
+Or use the combined corpus workflow:
 
 ```powershell
 python scripts/setup_corpus.py
 ```
 
-Cross-encoder reranking needs no separate index; its model downloads on the first
-reranked query and is then cached locally.
+Validate the frozen evaluation manifest:
+
+```powershell
+python scripts/evaluate_retrieval.py --manifest-only
+```
+
+To intentionally freeze a newly reviewed corpus/benchmark snapshot:
+
+```powershell
+python scripts/evaluate_retrieval.py --write-manifest --manifest-only
+```
+
+Do this only after reviewing any chunking or relevance-judgment changes.
 
 ## Run
 
@@ -191,14 +208,24 @@ reranked query and is then cached locally.
 streamlit run app.py
 ```
 
-The UI shows provenance, content type, dense/BM25/RRF/reranker ranks and scores,
-query analysis, latency, and retrieved text. The retrieval-only comparison view
-shows all four top-five lists without calling Gemini.
-
-Command-line smoke test:
+End-to-end command-line smoke test:
 
 ```powershell
-python scripts/smoke_rag.py --mode hybrid_rerank "How does HBM3E improve AI inference?"
+python scripts/smoke_rag.py --mode hybrid_rerank "What bandwidth does the HBM3E document specify?"
+```
+
+Run a fresh benchmark and regenerate JSON, CSV, and Markdown reports:
+
+```powershell
+python scripts/evaluate_retrieval.py --repeats 2 --depth 10
+```
+
+For a completely offline run after both local models are cached:
+
+```powershell
+$env:HF_HUB_OFFLINE="1"
+$env:TRANSFORMERS_OFFLINE="1"
+python scripts/evaluate_retrieval.py --repeats 2 --depth 10
 ```
 
 ## Configuration
@@ -235,44 +262,34 @@ CHUNK_OVERLAP=150
 python -m unittest discover -s tests -v
 ```
 
-The deterministic suite mocks cross-encoder predictions and also creates a local
-PDF table to verify extraction without network or model downloads.
+The 25-test suite covers ingestion, deterministic chunk IDs, index alignment,
+Gemini fallback behavior, technical tokenization, table extraction, reranking,
+query analysis, citations, Recall@K, MRR, graded nDCG, benchmark validation,
+manifest compatibility, mode consistency, unanswerable items, and result
+serialization. Model predictions are mocked in unit tests.
 
-## Roadmap
+## Project progression
 
-```text
-v0.1
-Curated Technical Corpus
-+ Dense FAISS RAG
+| Version | Main contribution |
+|---|---|
+| v0.1 | Curated PDF corpus and dense FAISS RAG |
+| v0.2 | BM25, hybrid retrieval, RRF, and metadata filtering |
+| v0.3 | Cross-encoder reranking, query analysis, table handling, and context improvements |
+| v1.0 | Frozen evaluation dataset, ranking/latency benchmark, error analysis, answer-review workflow, and final dashboard |
 
-         ↓
+## Known limitations
 
-v0.2
-BM25 + Dense
-+ Hybrid Retrieval
-+ RRF
-+ Metadata Filtering
+- The 60 relevance sets were verified against stored corpus passages but have
+  not received independent human assessor sign-off.
+- The generated answer-review queue requires human scoring; automatic citation
+  syntax validation is not citation correctness.
+- PyMuPDF table extraction is best effort; complex layouts can remain noisy,
+  although original page text is retained.
+- Cross-encoder CPU latency is substantial relative to BM25 and Hybrid.
+- The corpus contains 16 vendor-authored documents and does not represent the
+  full memory/storage domain.
+- No production deployment, commercial adoption, or paid evaluation service is
+  claimed.
 
-         ↓
-
-v0.3
-Cross-Encoder Reranking
-+ Query Analysis
-+ Technical Table Handling
-+ Improved Context Assembly
-
-         ↓
-
-v1.0
-Golden Evaluation Dataset
-+ Recall@K
-+ MRR
-+ nDCG
-+ Answer Faithfulness
-+ Citation Correctness
-+ Latency Comparison
-```
-
-MemoryLens v0.3 intentionally excludes agents, LangGraph, paid reranking APIs,
-LLM reranking, query expansion, HyDE, multi-query retrieval, and the full v1.0
-evaluation framework.
+MemoryLens intentionally excludes agents, LangGraph, paid reranking APIs,
+Kubernetes, and the addition of unmeasured retrieval architectures.

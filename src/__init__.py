@@ -1,1 +1,1 @@
-"""MemoryLens v0.3: technical RAG with hybrid retrieval and local reranking."""
+"""MemoryLens v1.0: evaluated technical RAG over a frozen Micron corpus."""

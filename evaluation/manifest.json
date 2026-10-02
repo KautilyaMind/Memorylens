@@ -1,0 +1,92 @@
+{
+  "manifest_version": 1,
+  "benchmark_version": "1.0.0",
+  "benchmark_sha256": "304bf1b8b32673f76561f3a93ee00de56e3458fc3b052c303500c4a5a090282e",
+  "corpus": {
+    "document_manifest": "config\\documents.yaml",
+    "document_count": 16,
+    "documents": {
+      "MICRON-DRAM-001": {
+        "file_name": "micron-hbm3e-product-brief.pdf",
+        "sha256": "c9c99fbc7f3ca759b22add23c7a5151340d559954919c30092a966ac6e51da48"
+      },
+      "MICRON-DRAM-002": {
+        "file_name": "micron-gddr7-product-brief.pdf",
+        "sha256": "7141d30d953b22b447ed3c584522de95f5114fbc507675db360a6f370b636a16"
+      },
+      "MICRON-DRAM-003": {
+        "file_name": "mobile-memory-foundation-edge-ai.pdf",
+        "sha256": "6e5f63b2bf5cbab33042ec84ae74c7f81b29f2f209316b0bf422858a516a6c4d"
+      },
+      "MICRON-DRAM-004": {
+        "file_name": "lpddr5x-camm2-technical-brief.pdf",
+        "sha256": "a466417e2e84ea1822fb8e1bd9fe5e9bdef3e1ffdbb73a4ac47ad65fd80222cf"
+      },
+      "MICRON-DRAM-005": {
+        "file_name": "ddr5-generational-update.pdf",
+        "sha256": "89758415ebadc7eae5c52641e6d3cd01b7122ff3cf9b0b021f0fbaaa9aa5d3d5"
+      },
+      "MICRON-DRAM-006": {
+        "file_name": "ddr5-new-features.pdf",
+        "sha256": "ed8dca13be7895f5a162f791dd098730958a591b28d3333a72d0de47a896661e"
+      },
+      "MICRON-DRAM-007": {
+        "file_name": "ddr5-client-module-features.pdf",
+        "sha256": "45af4651c63ac2d2fd3dfc0b68359631698a84ad779ce92d28059e57f235d6cb"
+      },
+      "MICRON-NAND-001": {
+        "file_name": "micron-9650-nvme-ssd.pdf",
+        "sha256": "85c47052d24a4020bf70de69b0474518748d14260d4b60904cdfa4ef2dc2e967"
+      },
+      "MICRON-NAND-002": {
+        "file_name": "micron-2600-nvme-ssd.pdf",
+        "sha256": "611a74a70f586a062f63e877e13e27afa85023baa7960b2691b6e2b500538ff3"
+      },
+      "MICRON-NAND-003": {
+        "file_name": "micron-2650-nvme-ssd.pdf",
+        "sha256": "eca62936924822dd29b026fd6573f056e1559c73df235895a8067350eb7bde18"
+      },
+      "MICRON-NAND-004": {
+        "file_name": "micron-6550-ion-nvme-ssd.pdf",
+        "sha256": "2c276499e0bf5e3a38f29d4bea3b037cfb6cdc57e260eb705ca34ce17a9f8f5d"
+      },
+      "MICRON-NOR-001": {
+        "file_name": "micron-nor-nand-flash-guide.pdf",
+        "sha256": "791d5f24f9d5fa4fcf780dd82cd330d0cd388cccaae3dbf0b17101e5bc3c788f"
+      },
+      "MICRON-NOR-002": {
+        "file_name": "micron-nor-flash-product-flyer.pdf",
+        "sha256": "1f2f3f3e3ecfba08d3c74cb3cd99b1be35d823978039293d8ce42ded71009466"
+      },
+      "MICRON-TECH-001": {
+        "file_name": "ai-acceleration-drives-memory-solutions.pdf",
+        "sha256": "b4f07c49e943a50071c3ba87fa102e8e4f958e06bfca307a0a33c623ae417a45"
+      },
+      "MICRON-TECH-002": {
+        "file_name": "memory-in-hpc-and-ai.pdf",
+        "sha256": "738b57d67111f18f87c136eb6356712130b2bdffb339af69bfc239e3ee7c0e5e"
+      },
+      "MICRON-TECH-003": {
+        "file_name": "emerging-memory-centric-data-center.pdf",
+        "sha256": "352f9cb3059356592be2b793b8a6ba9215b63730119528a24fde598027f5dac7"
+      }
+    }
+  },
+  "chunks": {
+    "count": 343,
+    "chunk_id_digest": "be0c78262947af0c3f3d7e00d20ac6d060fe8de47edb41d56cf7eeba93c7f4c2",
+    "chunk_size": 1000,
+    "chunk_overlap": 150,
+    "table_extraction": true
+  },
+  "retrieval": {
+    "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+    "reranker_model": "cross-encoder/ms-marco-MiniLM-L-6-v2",
+    "bm25_tokenizer_version": "technical-v2",
+    "faiss_index_version": 1,
+    "dense_candidates": 20,
+    "bm25_candidates": 20,
+    "rrf_k": 60,
+    "rerank_candidates": 20
+  }
+}
